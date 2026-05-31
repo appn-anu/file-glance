@@ -10,7 +10,11 @@ import {
 } from "@heroicons/react/20/solid"
 
 import { CogIcon as CogIconMicro } from "@heroicons/react/16/solid"
-import { BookmarkSlashIcon } from "@heroicons/react/24/outline"
+import {
+  BookmarkSlashIcon,
+  SwatchIcon,
+  CheckIcon,
+} from "@heroicons/react/24/outline"
 
 import "./DataTable.css"
 
@@ -165,6 +169,34 @@ export const DataTable = (props: {
   const [popoverColumnIndex, setPopoverColumnIndex] = React.useState<
     number | null
   >(null)
+  const [colorScaleColumns, setColorScaleColumns] = React.useState<number[]>([])
+
+  // Per-column numeric min/max for color-scale conditional formatting.
+  // Text and blank values are ignored; columns without any numeric value are omitted.
+  const columnStats = useMemo(() => {
+    const stats: Record<number, { min: number; max: number }> = {}
+    for (const ci of props.columnInfos) {
+      let min = Infinity
+      let max = -Infinity
+      for (const cv of ci.columnValues) {
+        const v = cv.value
+        const n =
+          typeof v === "number"
+            ? v
+            : typeof v === "bigint"
+              ? Number(v)
+              : NaN
+        if (!Number.isNaN(n)) {
+          if (n < min) min = n
+          if (n > max) max = n
+        }
+      }
+      if (min !== Infinity) {
+        stats[ci.columnIndex] = { min, max }
+      }
+    }
+    return stats
+  }, [props.columnInfos])
   const [transformModalOpen, setTransformModalOpen] =
     React.useState<boolean>(false)
   const [transformerFunctionCode, setTransformerFunctionCode] =
@@ -321,6 +353,23 @@ export const DataTable = (props: {
     ],
     [
       {
+        text: "Color scale",
+        icon: colorScaleColumns.includes(popoverColumnIndex!) ? (
+          <CheckIcon />
+        ) : (
+          <SwatchIcon />
+        ),
+        onSelect: () => {
+          setColorScaleColumns((prev) =>
+            prev.includes(popoverColumnIndex!)
+              ? prev.filter((c) => c !== popoverColumnIndex)
+              : [...prev, popoverColumnIndex!],
+          )
+        },
+      },
+    ],
+    [
+      {
         text: "Transform",
         icon: <CogIconMicro />,
         onSelect: () => {
@@ -461,6 +510,8 @@ export const DataTable = (props: {
             selectedRow={selectedRow}
             headerRow={props.headerRow}
             columnsWidths={sColumnWidths}
+            colorScaleColumns={colorScaleColumns}
+            columnStats={columnStats}
             sortSetting={props.sortSetting}
             isMetaPressed={isMetaPressed}
             onHeaderPressed={({ columnIndex }) => {

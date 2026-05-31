@@ -12,8 +12,11 @@ import {
   isLink,
   isNonEmptyArray,
   valueAsStringFormatted,
+  divergingColor,
   SortSetting,
 } from "@/utils"
+
+type ColumnStats = Record<number, { min: number; max: number }>
 import { cva } from "class-variance-authority"
 import { cloneDeep } from "lodash-es"
 
@@ -34,6 +37,8 @@ const ItemWrapper = ({ data, index, style }) => {
     selectedRow,
     headerRow,
     columnsWidths,
+    colorScaleColumns,
+    columnStats,
     sortSetting,
     isMetaPressed,
     onHeaderPressed,
@@ -53,6 +58,8 @@ const ItemWrapper = ({ data, index, style }) => {
       hiddenColumns={hiddenColumns}
       headerRow={headerRow}
       columnsWidths={columnsWidths}
+      colorScaleColumns={colorScaleColumns}
+      columnStats={columnStats}
       isMetaPressed={isMetaPressed}
       sortSetting={sortSetting}
       onHeaderPressed={onHeaderPressed}
@@ -119,7 +126,7 @@ const rowClasses = cva("flex flex-row", {
 export const Row = (
   // @ts-ignore
   // prettier-ignore
-  { index, style, rows, selectedRow, headerRow, hiddenColumns, columnsWidths, onValueCellPressed, onRowSelected, isMetaPressed },
+  { index, style, rows, selectedRow, headerRow, hiddenColumns, columnsWidths, colorScaleColumns, columnStats, onValueCellPressed, onRowSelected, isMetaPressed },
 ) => {
   // const rowClasses = "flex flex-row" + (index % 2 === 0 ? " bg-gray-100" : "")
   // console.log("row index:", index)
@@ -199,6 +206,24 @@ export const Row = (
 
           const highlightLinks = isMetaPressed && isLink(v)
 
+          // Color-scale conditional formatting: only numeric cells of enabled
+          // columns get a diverging background; text/blank cells are left as-is.
+          let colorScaleBackground: string | undefined
+          if (colorScaleColumns?.includes(vi)) {
+            const stats = columnStats?.[vi]
+            const numericValue =
+              typeof v === "number"
+                ? v
+                : typeof v === "bigint"
+                  ? Number(v)
+                  : null
+            if (stats && numericValue !== null) {
+              const range = stats.max - stats.min
+              const t = range === 0 ? 0.5 : (numericValue - stats.min) / range
+              colorScaleBackground = divergingColor(t)
+            }
+          }
+
           if (highlightLinks) {
             // Use actual links for link highlight such that e.g. "copy link" context menu features work out of the box
             return (
@@ -240,6 +265,7 @@ export const Row = (
                 })}
                 style={{
                   width: columnsWidths[vi],
+                  backgroundColor: colorScaleBackground,
                 }}
                 onClick={() => {
                   if (isMetaPressed) {
@@ -400,6 +426,8 @@ export const StickyList = ({
   selectedRow,
   headerRow,
   columnsWidths,
+  colorScaleColumns,
+  columnStats,
   sortSetting,
   isMetaPressed,
   onHeaderPressed,
@@ -418,6 +446,8 @@ export const StickyList = ({
       selectedRow,
       headerRow,
       columnsWidths,
+      colorScaleColumns,
+      columnStats,
       sortSetting,
       isMetaPressed,
       onHeaderPressed,
@@ -436,6 +466,8 @@ export const StickyList = ({
         selectedRow,
         headerRow,
         columnsWidths,
+        colorScaleColumns,
+        columnStats,
         sortSetting,
         isMetaPressed,
         onHeaderPressed,
@@ -465,6 +497,8 @@ interface VirtualizedListProps {
   selectedRow: number | null
   headerRow: string[]
   columnsWidths: string[]
+  colorScaleColumns: number[]
+  columnStats: ColumnStats
   sortSetting: SortSetting | null
   isMetaPressed: boolean
   onHeaderPressed: ({ columnIndex }: { columnIndex: number }) => void
