@@ -2,7 +2,7 @@ import { orderBy } from "lodash-es"
 import Accordion from "../../components/ui/Accordion"
 import React from "react"
 import MiddleEllipsis from "../../components/ui/MiddleEllipsis"
-import { ColumnFilter, FilterValue } from "@/utils"
+import { ColumnFilter, isValueChecked } from "@/utils"
 import TipsCarousel from "./TipsCarousel/TipsCarousel"
 import { MenuPopover } from "../../components/ui/Popover"
 import { Button } from "@/components/ui/button"
@@ -10,11 +10,10 @@ import { AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline"
 
 export const ValuesInspector = (props: {
   filters: ColumnFilter[]
-  onFilterToggle: (
-    columnIndex: number,
-    filterValue: FilterValue,
-    isAdding: boolean,
-  ) => void
+  onValueCheckboxToggle: (columnIndex: number, valueName: string) => void
+  onFilterIsolate: (columnIndex: number, valueName: string) => void
+  onCheckAll: (columnIndex: number) => void
+  onCheckNone: (columnIndex: number) => void
   columnValueCounts: ColumnInfos[]
   openAccordions: number[]
   onToggleAccordion: (index: number) => void
@@ -189,6 +188,18 @@ export const ValuesInspector = (props: {
                         })),
                     },
                   ],
+                  [
+                    {
+                      text: "Check all",
+                      icon: <span />,
+                      onSelect: () => props.onCheckAll(column.columnIndex),
+                    },
+                    {
+                      text: "Check none",
+                      icon: <span />,
+                      onSelect: () => props.onCheckNone(column.columnIndex),
+                    },
+                  ],
                 ]}
                 onSelect={() => {
                   setSortPopoverAnchorEl(null)
@@ -207,15 +218,10 @@ export const ValuesInspector = (props: {
                       (_) => _.columnIndex === column.columnIndex,
                     )
 
-                    const existingFilterForValue =
-                      existingColFilter &&
-                      existingColFilter.filterValues.find(
-                        (fValue) => fValue.value === columnValue.valueName,
-                      )
-                    const isFilteredValue = !!existingFilterForValue
-
-                    const isExcludeFilter =
-                      isFilteredValue && !existingFilterForValue.included
+                    const isChecked = isValueChecked(
+                      existingColFilter,
+                      columnValue.valueName,
+                    )
 
                     const displayedValueCounts: string = isEffectivelyFiltered
                       ? `${columnValue.valueCountFiltered.toLocaleString()}\u2009/\u2009${columnValue.valueCountTotal.toLocaleString()}`
@@ -224,17 +230,29 @@ export const ValuesInspector = (props: {
                     return (
                       <div
                         key={`${column.columnIndex}_${columnValue.valueName}`}
-                        className="text-sm flex whitespace-nowrap"
+                        className="text-sm flex items-center whitespace-nowrap"
                         style={{
                           opacity: columnValue.valueCountFiltered ? 1 : 0.7,
                         }}
                       >
+                        <input
+                          type="checkbox"
+                          className="mr-1.5 shrink-0 cursor-pointer"
+                          checked={isChecked}
+                          title={isChecked ? "Uncheck to hide" : "Check to show"}
+                          onChange={() =>
+                            props.onValueCheckboxToggle(
+                              column.columnIndex,
+                              columnValue.valueName,
+                            )
+                          }
+                        />
                         <a
                           href="#"
                           className={`text-blue-500 shrink grow-0 overflow-hidden ${
                             columnValue.valueName ? "" : "font-mono"
-                          } ${isFilteredValue ? "font-medium" : ""}`}
-                          title={columnValue.valueName}
+                          }`}
+                          title={`${columnValue.valueName} (click to show only this value)`}
                           onClick={(e) => e.preventDefault()}
                           onPointerDown={(e) => {
                             e.preventDefault()
@@ -242,25 +260,13 @@ export const ValuesInspector = (props: {
                             if (e.button) {
                               return
                             }
-                            props.onFilterToggle(
+                            props.onFilterIsolate(
                               column.columnIndex,
-                              {
-                                value: columnValue.valueName,
-                                included: !e.altKey,
-                              },
-                              e.metaKey,
+                              columnValue.valueName,
                             )
                           }}
                         >
                           <MiddleEllipsis>
-                            {isExcludeFilter && (
-                              <span
-                                className="mr-0.5 text-red-700"
-                                style={{ fontWeight: "bold" }}
-                              >
-                                ¬
-                              </span>
-                            )}
                             <span>{columnValue.valueName || "empty"}</span>
                           </MiddleEllipsis>
                         </a>

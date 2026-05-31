@@ -42,6 +42,7 @@ import {
   Transformer,
   findEmptyColumns,
   applyFilters,
+  isValueChecked,
   countValues,
   createRowProxy,
   parseLineSeparatedJson,
@@ -891,48 +892,73 @@ export default function Home() {
 
   // console.log("dragging", dragging)
 
-  const onFilterToggle = (
+  // All distinct value names of a column (as stored in filters), from columnInfos
+  const getColumnValueNames = (columnIndex: number): string[] => {
+    const ci = columnInfos.find((c) => c.columnIndex === columnIndex)
+    return ci ? ci.columnValues.map((cv) => cv.valueName) : []
+  }
+
+  // Replace a single column's filter, dropping it entirely when empty
+  const setColumnFilter = (
     columnIndex: number,
-    filterValue: FilterValue,
-    isAdding: boolean,
+    filterValues: FilterValue[],
   ) => {
-    let newColFilter: ColumnFilter
-    const existingColFilter = filters.find((_) => _.columnIndex === columnIndex)
-    // Easy case: No filter for this column so far => Simply add with clicked value
-    if (!existingColFilter) {
-      newColFilter = { columnIndex: columnIndex, filterValues: [filterValue] }
+    setFilters([
+      ...filters.filter((f) => f.columnIndex !== columnIndex),
+      ...(filterValues.length ? [{ columnIndex, filterValues }] : []),
+    ])
+  }
+
+  // Excel-style checkbox toggle: flip a value's shown/hidden state, keeping the
+  // others. Always normalized to exclude filters (unchecked = excluded);
+  // "all checked" => no filter.
+  const onValueCheckboxToggle = (columnIndex: number, valueName: string) => {
+    const allValueNames = getColumnValueNames(columnIndex)
+    const existing = filters.find((f) => f.columnIndex === columnIndex)
+    const checked = new Set(
+      allValueNames.filter((vn) => isValueChecked(existing, vn)),
+    )
+    if (checked.has(valueName)) {
+      checked.delete(valueName)
     } else {
-      if (isAdding) {
-        // With meta key pressed allow selecting of several values
-        newColFilter = {
-          columnIndex: columnIndex,
-          filterValues: existingColFilter.filterValues.find(
-            (ef) => ef.value === filterValue.value,
-          )
-            ? existingColFilter.filterValues.filter(
-                (iv) => iv.value !== filterValue.value,
-              )
-            : [...existingColFilter.filterValues, filterValue],
-        }
-      } else {
-        // Deselect already selected / replace
-        newColFilter = {
-          columnIndex: columnIndex,
-          filterValues: existingColFilter.filterValues.find(
-            (ef) => ef.value === filterValue.value,
-          )
-            ? existingColFilter.filterValues.filter(
-                (iv) => iv.value !== filterValue.value,
-              )
-            : [filterValue],
-        }
-      }
+      checked.add(valueName)
     }
-    const updatedFilters = [
-      ...filters.filter((_) => _.columnIndex !== columnIndex),
-      newColFilter,
-    ].filter((f) => f.filterValues.length)
-    setFilters(updatedFilters)
+    const excluded = allValueNames.filter((vn) => !checked.has(vn))
+    setColumnFilter(
+      columnIndex,
+      excluded.map((vn) => ({ value: vn, included: false })),
+    )
+  }
+
+  // Clicking a value label isolates it (show only this value). Clicking the
+  // already-isolated value clears the filter (show all again).
+  const onFilterIsolate = (columnIndex: number, valueName: string) => {
+    const existing = filters.find((f) => f.columnIndex === columnIndex)
+    const isAlreadyIsolated =
+      existing &&
+      existing.filterValues.length === 1 &&
+      existing.filterValues[0].included &&
+      existing.filterValues[0].value === valueName
+    setColumnFilter(
+      columnIndex,
+      isAlreadyIsolated ? [] : [{ value: valueName, included: true }],
+    )
+  }
+
+  // Check all => clear the column filter (show everything)
+  const onCheckAll = (columnIndex: number) => {
+    setColumnFilter(columnIndex, [])
+  }
+
+  // Check none => exclude every value (show nothing)
+  const onCheckNone = (columnIndex: number) => {
+    setColumnFilter(
+      columnIndex,
+      getColumnValueNames(columnIndex).map((vn) => ({
+        value: vn,
+        included: false,
+      })),
+    )
   }
 
   // // Update headerRow based on transformers
@@ -1751,7 +1777,10 @@ export default function Home() {
                   <ValuesInspector
                     columnValueCounts={columnInfos}
                     filters={filters}
-                    onFilterToggle={onFilterToggle}
+                    onValueCheckboxToggle={onValueCheckboxToggle}
+                    onFilterIsolate={onFilterIsolate}
+                    onCheckAll={onCheckAll}
+                    onCheckNone={onCheckNone}
                     openAccordions={openAccordions}
                     onToggleAccordion={(columnIndex: number) => {
                       setOpenAccordions(
