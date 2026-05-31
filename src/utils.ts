@@ -60,6 +60,26 @@ export function isNumericColumn(c: ColumnInfos) {
   return c.columnType === "Number" || c.columnType === "BigInt"
 }
 
+// Diverging color scale red (t=0) -> white (t=0.5) -> green (t=1) for color-scale
+// conditional formatting. t is clamped to [0, 1]; returns an "rgb(r, g, b)" string.
+export function divergingColor(t: number): string {
+  const clamped = Math.min(1, Math.max(0, isFinite(t) ? t : 0.5))
+  // Low and high endpoints; white is the implicit midpoint.
+  const low = { r: 248, g: 113, b: 113 } // tailwind red-400
+  const high = { r: 74, g: 222, b: 128 } // tailwind green-400
+  const white = { r: 255, g: 255, b: 255 }
+  const lerp = (a: number, b: number, f: number) => Math.round(a + (b - a) * f)
+  const [from, to, f] =
+    clamped < 0.5
+      ? [low, white, clamped / 0.5]
+      : [white, high, (clamped - 0.5) / 0.5]
+  return `rgb(${lerp(from.r, to.r, f)}, ${lerp(from.g, to.g, f)}, ${lerp(
+    from.b,
+    to.b,
+    f,
+  )})`
+}
+
 // Proxy wrapper for each row to allow access by header name
 export function createRowProxy(row: any[], headers: string[]) {
   return new Proxy(row, {
@@ -1412,6 +1432,26 @@ export interface FilterValue {
 export interface ColumnFilter {
   columnIndex: number
   filterValues: FilterValue[]
+}
+
+// Excel-style checkbox state for a single value of a column.
+// Default (no filter) => all values are "checked" (shown). When include filters
+// are present a value is checked iff it is one of them; otherwise (exclude
+// filters) a value is checked iff it is not excluded. See applyFilters().
+export function isValueChecked(
+  columnFilter: ColumnFilter | undefined,
+  valueName: string,
+): boolean {
+  if (!columnFilter || columnFilter.filterValues.length === 0) {
+    return true
+  }
+  const includedValues = columnFilter.filterValues.filter((fv) => fv.included)
+  if (includedValues.length > 0) {
+    return includedValues.some((fv) => fv.value === valueName)
+  }
+  return !columnFilter.filterValues.some(
+    (fv) => !fv.included && fv.value === valueName,
+  )
 }
 
 // Simple / legacy variant w/o include/exclude differentiation
