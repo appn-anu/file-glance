@@ -2,11 +2,8 @@ import type { Metadata } from "next"
 import { Roboto, Roboto_Mono } from "next/font/google"
 
 import "./globals.css"
-import Script from "next/script"
 import { title } from "@/constants"
 import { Toaster } from "../components/ui/toaster"
-import { Suspense } from "react"
-import { NavigationEvents } from "./navigation-events"
 
 const roboto_mono = Roboto_Mono({
   subsets: ["latin"],
@@ -41,9 +38,6 @@ export default function RootLayout({
       >
         <main>{children}</main>
         <Toaster />
-        <Suspense fallback={null}>
-          <NavigationEvents />
-        </Suspense>
       </body>
     </html>
   )
