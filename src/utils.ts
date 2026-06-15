@@ -13,7 +13,10 @@ import {
 import { ColumnInfos } from "./app/components/ValueInspector"
 
 // Cache a default NumberFormat instance for repeated use instead of using toLocaleString(): https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/toLocaleString
-const defaultNumberFormatter = new Intl.NumberFormat()
+// useGrouping: false -> no thousands-separator commas (keeps long floats trimmed).
+const defaultNumberFormatter = new Intl.NumberFormat(undefined, {
+  useGrouping: false,
+})
 
 export function valueAsStringFormatted(v: any): string {
   const valueAsStringUnformatted = "" + v
@@ -74,6 +77,119 @@ export function asNumericValue(v: any): number | null {
     return Number.isFinite(n) ? n : null
   }
   return null
+}
+
+// Strict numeric-string test used for COLUMN type inference on all-string
+// sources (CSV/TSV/markdown/paste). Anchored with no nested quantifiers, so it
+// scans each candidate in linear time (no catastrophic backtracking).
+// Accepts: "0", "0.5", "-3", "12.34", "1e5", "-1.2e-3", ".5".
+// Deliberately rejects: leading-zero integers ("007", "02134" -> likely IDs /
+// zip codes), hex ("0xFF"), "Infinity"/"NaN", leading "+", thousands separators.
+// This is intentionally stricter than asNumericValue (which is lenient on
+// purpose for the color-scale path), so we do not corrupt identifier columns.
+const STRICT_NUMERIC_RE =
+  /^-?(?:0|[1-9][0-9]*|0?\.[0-9]+|[1-9][0-9]*\.[0-9]*)(?:[eE][-+]?[0-9]+)?$/
+
+// In-place, column-wise type inference for all-string tabular data. A column is
+// coerced only if EVERY non-empty cell matches one consistent type (numeric or
+// boolean); a single stray value leaves the whole column as strings, so e.g. an
+// ID column with one "N/A" stays text. Coerced columns are homogeneous, which
+// keeps countValues' columnType clean ("Number" / "BigInt" / "Boolean").
+//
+// Numeric columns whose integers exceed Number.MAX_SAFE_INTEGER are promoted to
+// BigInt to preserve precision (the app supports bigint end-to-end). Blank cells
+// are ignored for detection and left as "" so a numeric column with some blanks
+// still counts as numeric.
+export function coerceColumnTypes(data: any[][]): void {
+  if (!data || data.length === 0) return
+
+  let colCount = 0
+  for (const row of data) if (row.length > colCount) colCount = row.length
+  if (colCount === 0) return
+
+  // Per-column detection state.
+  const seenValue = new Array<boolean>(colCount).fill(false)
+  const couldBeNumeric = new Array<boolean>(colCount).fill(true)
+  const couldBeBoolean = new Array<boolean>(colCount).fill(true)
+  const allIntegerForm = new Array<boolean>(colCount).fill(true)
+  const hasUnsafeInt = new Array<boolean>(colCount).fill(false)
+
+  // Pass 1: detect.
+  for (let r = 0; r < data.length; r++) {
+    const row = data[r]
+    for (let c = 0; c < row.length; c++) {
+      if (!couldBeNumeric[c] && !couldBeBoolean[c]) continue // disqualified
+      const cell = row[c]
+      if (cell == null || cell === "") continue
+      if (typeof cell !== "string") {
+        // Already-typed value (defensive): cannot infer a uniform string type.
+        couldBeNumeric[c] = false
+        couldBeBoolean[c] = false
+        continue
+      }
+      const trimmed = cell.trim()
+      if (trimmed === "") continue // blank-ish, ignore for detection
+
+      seenValue[c] = true
+
+      if (couldBeNumeric[c]) {
+        if (STRICT_NUMERIC_RE.test(trimmed)) {
+          const isIntegerForm =
+            trimmed.indexOf(".") === -1 &&
+            trimmed.indexOf("e") === -1 &&
+            trimmed.indexOf("E") === -1
+          if (isIntegerForm) {
+            if (!Number.isSafeInteger(Number(trimmed))) hasUnsafeInt[c] = true
+          } else {
+            allIntegerForm[c] = false
+          }
+        } else {
+          couldBeNumeric[c] = false
+        }
+      }
+
+      if (couldBeBoolean[c]) {
+        const lower = trimmed.toLowerCase()
+        if (lower !== "true" && lower !== "false") couldBeBoolean[c] = false
+      }
+    }
+  }
+
+  // Resolve each column to a coercion kind.
+  type Kind = "none" | "number" | "bigint" | "boolean"
+  const kinds = new Array<Kind>(colCount).fill("none")
+  let anyToCoerce = false
+  for (let c = 0; c < colCount; c++) {
+    if (!seenValue[c]) continue
+    if (couldBeNumeric[c]) {
+      kinds[c] = allIntegerForm[c] && hasUnsafeInt[c] ? "bigint" : "number"
+      anyToCoerce = true
+    } else if (couldBeBoolean[c]) {
+      kinds[c] = "boolean"
+      anyToCoerce = true
+    }
+  }
+  if (!anyToCoerce) return
+
+  // Pass 2: coerce only qualifying columns; leave blanks as "".
+  for (let r = 0; r < data.length; r++) {
+    const row = data[r]
+    for (let c = 0; c < row.length; c++) {
+      const kind = kinds[c]
+      if (kind === "none") continue
+      const cell = row[c]
+      if (typeof cell !== "string") continue
+      const trimmed = cell.trim()
+      if (trimmed === "") continue
+      if (kind === "number") {
+        row[c] = Number(trimmed)
+      } else if (kind === "bigint") {
+        row[c] = BigInt(trimmed)
+      } else {
+        row[c] = trimmed.toLowerCase() === "true"
+      }
+    }
+  }
 }
 
 // Diverging color scale red (t=0) -> white (t=0.5) -> green (t=1) for color-scale

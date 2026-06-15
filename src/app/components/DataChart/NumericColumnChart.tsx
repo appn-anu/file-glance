@@ -10,6 +10,7 @@ import {
 } from "../../../components/ui/card"
 import { ColumnInfos } from "../ValueInspector"
 import { CHART_SERIES_COLORS, ChartAnimationDuration } from "./chartUtils"
+import { asNumericValue } from "@/utils"
 
 interface NumericColumnChartProps {
   columnInfo: ColumnInfos
@@ -25,16 +26,18 @@ export const NumericColumnChart: React.FC<NumericColumnChartProps> = ({
   let min = Infinity,
     max = -Infinity
   for (const cv of displayedValues) {
-    const n = cv.value
-    if (!isNaN(n)) {
+    // asNumericValue skips blanks ("") and non-numbers and converts bigint,
+    // so stats below operate on real numbers (no "" sneaking in as 0/NaN).
+    const n = asNumericValue(cv.value)
+    if (n !== null) {
       if (n < min) min = n
       if (n > max) max = n
     }
   }
 
   const allNumbers: number[] = displayedValues.flatMap((cv) => {
-    const n = cv.value
-    if (isNaN(n)) return []
+    const n = asNumericValue(cv.value)
+    if (n === null) return []
     return Array(cv.valueCountFiltered).fill(n)
   })
   if (allNumbers.length > 0) {

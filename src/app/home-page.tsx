@@ -46,6 +46,7 @@ import {
   countValues,
   createRowProxy,
   parseLineSeparatedJson,
+  coerceColumnTypes,
   isMacOS,
 } from "@/utils"
 import { extractZipFile } from "@/utils/zipExtractor"
@@ -256,6 +257,9 @@ export default function Home() {
             relax_column_count: true,
           })
           _headerRow = data.shift()!
+          // Delimited import yields all strings; infer numeric/boolean columns
+          // so shared CSV links behave like a fresh file load.
+          coerceColumnTypes(data)
         } else {
           const parsed = jsonToTable(maybeJson)
           data = parsed.data
@@ -359,6 +363,10 @@ export default function Home() {
       let isHeaderSet = false
       let errorMessage = ""
       let longestRowLength = 0
+      // Set by all-string sources (delimited text, markdown) so we infer
+      // numeric/boolean column types before display. Typed sources (XLSX, JSON,
+      // Parquet, line-JSON) leave it false and are passed through untouched.
+      let needsTypeInference = false
 
       // Import full project (no postprocessing needed / return early)
       if (files[0].name.toLowerCase().endsWith(".fg")) {
@@ -451,6 +459,7 @@ export default function Home() {
 
           const markdownParsingResult = parseMarkdownTable(contentAsText)
           data = data.concat(markdownParsingResult.rows)
+          needsTypeInference = true
           _headerRow = markdownParsingResult.headerRow
           isHeaderSet = true
           setDataFormatAlwaysIncludesHeader(true)
@@ -532,6 +541,7 @@ export default function Home() {
                 }
 
                 data = data.concat(content)
+                needsTypeInference = true
               } catch (err) {
                 console.error(err)
                 errorMessage = "Parsing failed"
@@ -573,6 +583,14 @@ export default function Home() {
           if (row.length < longestRowLength) {
             row.push(...Array(longestRowLength - row.length).fill(null))
           }
+        }
+
+        // Infer numeric/boolean column types for all-string sources so CSV/TSV/
+        // markdown data sorts, charts, and aggregates like typed sources do.
+        if (needsTypeInference) {
+          console.time("coerceColumnTypes")
+          coerceColumnTypes(data)
+          console.timeEnd("coerceColumnTypes")
         }
 
         toast({
