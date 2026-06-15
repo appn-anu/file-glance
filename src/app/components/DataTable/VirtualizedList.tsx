@@ -13,6 +13,7 @@ import {
   isNonEmptyArray,
   valueAsStringFormatted,
   divergingColor,
+  asNumericValue,
   SortSetting,
 } from "@/utils"
 
@@ -211,12 +212,7 @@ export const Row = (
           let colorScaleBackground: string | undefined
           if (colorScaleColumns?.includes(vi)) {
             const stats = columnStats?.[vi]
-            const numericValue =
-              typeof v === "number"
-                ? v
-                : typeof v === "bigint"
-                  ? Number(v)
-                  : null
+            const numericValue = asNumericValue(v)
             if (stats && numericValue !== null) {
               const range = stats.max - stats.min
               const t = range === 0 ? 0.5 : (numericValue - stats.min) / range

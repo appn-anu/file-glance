@@ -23,7 +23,7 @@ import { MenuPopover } from "../../../components/ui/Popover"
 import useWindowDimensions from "../../../hooks/useWindowDimensions"
 import { innerElementType, Row, StickyList } from "./VirtualizedList"
 import { useToast } from "@/hooks/use-toast"
-import { getScrollbarWidth, SortSetting } from "@/utils"
+import { getScrollbarWidth, asNumericValue, SortSetting } from "@/utils"
 import TransformDialog from "../TransformDialog"
 import useKeyPress from "@/hooks/useKeyPress"
 import { FixedSizeList } from "react-window"
@@ -179,14 +179,8 @@ export const DataTable = (props: {
       let min = Infinity
       let max = -Infinity
       for (const cv of ci.columnValues) {
-        const v = cv.value
-        const n =
-          typeof v === "number"
-            ? v
-            : typeof v === "bigint"
-              ? Number(v)
-              : NaN
-        if (!Number.isNaN(n)) {
+        const n = asNumericValue(cv.value)
+        if (n !== null) {
           if (n < min) min = n
           if (n > max) max = n
         }

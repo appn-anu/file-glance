@@ -60,6 +60,22 @@ export function isNumericColumn(c: ColumnInfos) {
   return c.columnType === "Number" || c.columnType === "BigInt"
 }
 
+// Coerce a cell value to a finite number for numeric features (e.g. the color
+// scale). Real numbers/bigints pass through; numeric strings (as produced by the
+// CSV/TSV parser, which keeps everything as text) are parsed. Anything else -
+// blanks, non-numeric text, NaN/Infinity - returns null so callers can skip it.
+export function asNumericValue(v: any): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null
+  if (typeof v === "bigint") return Number(v)
+  if (typeof v === "string") {
+    const trimmed = v.trim()
+    if (trimmed === "") return null
+    const n = Number(trimmed)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
 // Diverging color scale red (t=0) -> white (t=0.5) -> green (t=1) for color-scale
 // conditional formatting. t is clamped to [0, 1]; returns an "rgb(r, g, b)" string.
 export function divergingColor(t: number): string {
